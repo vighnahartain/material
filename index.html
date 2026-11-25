@@ -96,6 +96,10 @@
   .nobox{background:var(--brand-l);border-radius:10px;padding:10px 12px;margin-bottom:4px}
   .nobox span{font-size:12px;color:var(--brand-d);display:block}
   .nobox b{font-size:19px;color:var(--brand);letter-spacing:.3px}
+  .mritem{display:flex;gap:6px;align-items:flex-end;margin-bottom:6px}.mritem select,.mritem input{padding:9px}
+  .mritem .x{flex:0 0 auto;border:0;background:none;color:var(--out);font-size:18px;padding:6px}
+  .itbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}.itbl td,.itbl th{padding:4px 5px;border-bottom:1px solid var(--line);text-align:left}.itbl .r{text-align:right}
+  nav button{font-size:11px}
   .entry-no{font-size:20px;font-weight:800;color:var(--brand);text-align:center;margin:8px 0}
 </style>
 </head>
@@ -147,8 +151,8 @@
       </div>
       <div id="homeBody">
         <div class="row" style="margin-bottom:10px">
-          <button class="big" style="background:var(--in)" onclick="openEntry('IN')">↓ INWARD<small>Receive material (GRN)</small></button>
-          <button class="big" style="background:var(--out)" onclick="openEntry('OUT')">↑ OUTWARD<small>Issue material</small></button>
+          <button class="big" id="bigIn" style="background:var(--in)" onclick="openEntry('IN')">↓ INWARD<small>Receive material (GRN)</small></button>
+          <button class="big" id="bigOut" style="background:var(--out)" onclick="openEntry('OUT')">↑ OUTWARD<small>Issue material</small></button>
         </div>
         <div class="row">
           <div class="card tile"><div class="v" style="color:var(--in)" id="tIn">–</div><div class="l">Today inward</div></div>
@@ -162,6 +166,9 @@
             <option value="used">Items in this project</option><option value="all">All materials</option><option value="low">Low stock only</option>
           </select>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="sub">Wing</span>
+          <select id="stockWing" style="width:auto;padding:7px" onchange="loadStock(true)"></select>
+          <span class="sub" id="stockWingNote"></span></div>
         <div id="stockList"></div>
         <p class="sub"><button class="link" onclick="loadStock()">↻ Refresh</button></p>
       </div>
@@ -186,6 +193,14 @@
 
         <label>Project *</label>
         <select id="fProj" onchange="onFormProject()"></select>
+        <label>Wing *</label>
+        <select id="fWing"></select>
+
+        <div id="mrBox" class="hidden">
+          <label>Against requisition (optional)</label>
+          <select id="fMr" onchange="onMrPick()"></select>
+          <div id="mrItemBox" class="hidden"><label>Requisition item</label><select id="fMrItem" onchange="onMrItem()"></select></div>
+        </div>
 
         <label>Material *</label>
         <div class="with-add">
@@ -250,13 +265,42 @@
         <button class="in" data-t="IN" onclick="setRegType(this)">Inward</button>
         <button class="out" data-t="OUT" onclick="setRegType(this)">Outward</button>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><span class="sub">Wing</span>
+        <select id="gWing" style="width:auto;padding:7px" onchange="loadRegister()"></select></div>
       <div class="row">
-        <input id="gQ" placeholder="🔍 Entry no, material, party, challan, vehicle, user" onkeydown="if(event.key==='Enter')loadRegister()">
+        <input id="gQ" placeholder="🔍 Entry no, material, party, challan, vehicle, user, MR no" onkeydown="if(event.key==='Enter')loadRegister()">
         <button class="btn" style="flex:0 0 auto" onclick="loadRegister()">Go</button>
       </div>
       <div id="myReqs"></div>
       <div class="sub" style="margin:10px 0 6px" id="gSummary"></div>
       <div id="regList"></div>
+    </section>
+
+    <!-- REQUISITION (INDENT) -->
+    <section class="view" id="v-mr">
+      <div class="row" style="margin-bottom:10px">
+        <button class="big" id="bigMr" style="background:var(--brand)" onclick="openMrForm()">＋ NEW REQUISITION<small>Request material for site</small></button>
+      </div>
+      <div id="mrForm" class="card hidden">
+        <h2 style="margin-top:0">New material requisition</h2>
+        <div class="sub">MR No. is created automatically when you submit.</div>
+        <label>Project *</label><select id="mProj" onchange="fillMrWings()"></select>
+        <div class="row">
+          <div><label>Wing *</label><select id="mWing"></select></div>
+          <div><label>Required by *</label><input type="date" id="mNeed"></div>
+        </div>
+        <label>Purpose / work</label><input id="mPurpose" placeholder="e.g. 3rd floor slab casting">
+        <label>Materials *</label>
+        <div id="mItems"></div>
+        <button class="link" onclick="addMrItem()">＋ Add another material</button>
+        <div class="row" style="margin-top:14px">
+          <button class="btn ghost" onclick="$('mrForm').classList.add('hidden')">Cancel</button>
+          <button class="btn" onclick="submitMr()">Submit requisition</button>
+        </div>
+      </div>
+      <div class="chips" id="mrChips"></div>
+      <div class="sub" id="mrSummary" style="margin:8px 0"></div>
+      <div id="mrList"></div>
     </section>
 
     <!-- REPORTS -->
@@ -270,9 +314,12 @@
           <option value="ledger">Material Ledger</option>
           <option value="supplier">Supplier-wise Purchase Summary</option>
           <option value="issued">Contractor / Block-wise Issue Summary</option>
+          <option value="requisition">Material Requisition Status</option>
         </select>
         <label>Project</label>
-        <select id="repProj"></select>
+        <select id="repProj" onchange="fillRepWings()"></select>
+        <label>Wing</label>
+        <select id="repWing"></select>
         <div id="repMatBox" class="hidden"><label>Material *</label><select id="repMat"></select></div>
         <div class="chips" id="repChips" style="margin-top:12px"></div>
         <div class="row">
@@ -294,7 +341,7 @@
         <button id="admTabU" onclick="admTab('u')">Users <span id="userCount"></span></button>
         <button id="admTabP" onclick="admTab('p')">Projects</button>
       </div>
-      <div id="admApprovals"><div id="apprList"></div></div>
+      <div id="admApprovals"><h2>Requisitions waiting</h2><div id="apprMrList"></div><h2>Entry changes waiting</h2><div id="apprList"></div></div>
       <div id="admUsers" class="hidden">
         <div id="userList"></div>
       </div>
@@ -308,6 +355,7 @@
           <label>Short name for entry no. (optional)</label><input id="pjPrefix" placeholder="LCA" style="text-transform:uppercase" maxlength="8">
           <div class="hint">Left empty, the first letters of the project name are used: Life Canvas Aurum → GRN/LCA/26-27/0001</div>
           <label>Location</label><input id="pjLoc">
+          <label>Wings (comma separated)</label><input id="pjWings" placeholder="A, B, C, Common">
           <button class="btn" style="width:100%;margin-top:12px" onclick="addProject()">Add project</button>
           <p class="hint">The project code is used inside the app; the short name appears in entry numbers.</p>
         </div>
@@ -320,9 +368,10 @@
   <nav>
     <button class="on" data-v="home" onclick="go('home')"><b>▦</b>Stock</button>
     <button data-v="entry" onclick="go('entry')"><b>＋</b>Entry</button>
+    <button data-v="mr" onclick="go('mr')"><b>📋</b>Indent<span class="badge hidden" id="mrBadge"></span></button>
     <button data-v="reg" onclick="go('reg')"><b>☰</b>Register</button>
     <button data-v="rep" onclick="go('rep')"><b>📄</b>Reports</button>
-    <button data-v="admin" onclick="go('admin')" id="navAdmin" class="hidden"><b>⚙</b>Admin<span class="badge hidden" id="pendBadge"></span></button>
+    <button data-v="admin" onclick="go('admin')" id="navAdmin" class="hidden"><b>⚙</b><span id="navAdminLbl">Admin</span><span class="badge hidden" id="pendBadge"></span></button>
   </nav>
 </section>
 
@@ -459,7 +508,7 @@ function authTab(t) {
   $('loginForm').classList.toggle('hidden', t !== 'login'); $('regForm').classList.toggle('hidden', t !== 'reg');
 }
 function showLogin() { $('app').classList.add('hidden'); $('login').classList.remove('hidden'); }
-function forceLogout(msg) { TOKEN = ''; localStorage.removeItem('vg_token'); showLogin(); if (msg) toast(msg, true); }
+function forceLogout(msg) { try { localStorage.removeItem(cacheKey()); } catch (e) {} TOKEN = ''; localStorage.removeItem('vg_token'); showLogin(); if (msg) toast(msg, true); }
 function logout() { $('userDlg').close(); forceLogout(); toast('Logged out'); }
 async function doLogin() {
   const u = $('lUser').value.trim(), p = $('lPass').value;
@@ -485,26 +534,47 @@ async function changePw() {
   });
 }
 
-/* ---------------- Start ---------------- */
+/* ---------------- Start (shows the last data instantly, then refreshes) ---------------- */
+let CAN = { in: false, out: false, req: false, appr: false };
+function cacheKey() { return 'vg_cache_' + (TOKEN || '').slice(-16); }
+function saveCache() { try { localStorage.setItem(cacheKey(), JSON.stringify({ D: D, STOCK: STOCK, PROJ: PROJ })); } catch (e) {} }
+function readCache() { try { return JSON.parse(localStorage.getItem(cacheKey()) || 'null'); } catch (e) { return null; } }
+function showApp() { $('login').classList.add('hidden'); $('app').classList.remove('hidden'); }
 async function start() {
   if (!TOKEN) return showLogin();
-  busy(true, 'Loading…');
+  const c = readCache();
+  if (c && c.D) { D = c.D; if (c.STOCK && c.PROJ === PROJ) STOCK = c.STOCK; showApp(); renderShell(); renderStock(); fillMaterialSelects(); }
+  else busy(true, 'Loading…');
   try {
-    D = await api('getInitData', TOKEN);
-    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-    renderShell();
-    if (PROJ) await loadStock();
+    const d = await api('getInitData', TOKEN, PROJ || '', $('stockWing').value || '');
+    D = d; showApp(); renderShell();
+    if (d.stock && d.stock.project === PROJ) { STOCK = d.stock; renderStock(); fillMaterialSelects(); }
+    else if (PROJ) await loadStock();
+    saveCache();
   } catch (e) { if (TOKEN) toast(e.message, true); else showLogin(); }
   finally { busy(false); }
 }
 
+function wingsOf(code) {
+  if (!D) return [];
+  if (!code || code === 'ALL') return [...new Set(D.projects.flatMap(p => p.wings || []))];
+  const p = D.projects.find(x => x.code === code); return p ? (p.wings || ['Common']) : [];
+}
+function wingOptions(code, first) { return (first ? `<option value="">${first}</option>` : '') + wingsOf(code).map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join(''); }
+function fillSel(id, html) { const el = $(id), cur = el.value; el.innerHTML = html; if ([...el.options].some(o => o.value === cur)) el.value = cur; }
+
 function renderShell() {
   $('userName').textContent = D.user.name;
   $('udName').textContent = D.user.name;
-  $('udInfo').textContent = '@' + D.user.username + ' · ' + D.user.role + ' · ' + D.user.mobile;
-  $('navAdmin').classList.toggle('hidden', !D.isAdmin);
+  $('udInfo').textContent = '@' + D.user.username + ' · ' + D.user.role + (D.isAdmin ? '' : ' · ' + (D.perms || []).join(', ')) + ' · ' + D.user.mobile;
+  const P = D.perms || [];
+  CAN = { in: P.includes('Storekeeper'), out: P.includes('Issuer'), req: P.includes('Requester'), appr: !!D.canApprove };
+  $('bigIn').classList.toggle('hidden', !CAN.in); $('bigOut').classList.toggle('hidden', !CAN.out); $('bigMr').classList.toggle('hidden', !CAN.req);
+  $('navAdmin').classList.toggle('hidden', !(D.isAdmin || CAN.appr));
+  $('navAdminLbl').textContent = D.isAdmin ? 'Admin' : 'Approve';
+  $('admTabU').classList.toggle('hidden', !D.isAdmin); $('admTabP').classList.toggle('hidden', !D.isAdmin);
   $('fReceived').textContent = D.user.name + ' (you)';
-  setBadges(D.pendingUsers, D.pendingRequests);
+  setBadges(D.pendingUsers, D.pendingRequests, D.pendingMrs);
   // projects
   regRows = [];
   if (!D.projects.some(p => p.code === PROJ)) PROJ = D.projects.length ? D.projects[0].code : '';
@@ -514,18 +584,25 @@ function renderShell() {
   $('projSel').value = PROJ;
   $('noProject').classList.toggle('hidden', !!PROJ); $('homeBody').classList.toggle('hidden', !PROJ);
   $('noProjectMsg').textContent = D.isAdmin ? 'Go to Admin → Projects and add your first project.' : 'Please ask the admin to give you access to a project.';
-  $('repProj').innerHTML = (D.projects.length > 1 ? '<option value="ALL">All my projects</option>' : '') +
-    D.projects.map(p => `<option value="${esc(p.code)}">${esc(p.code)} — ${esc(p.name)}</option>`).join('');
-  $('repProj').value = PROJ || 'ALL';
+  fillSel('repProj', (D.projects.length > 1 ? '<option value="ALL">All my projects</option>' : '') +
+    D.projects.map(p => `<option value="${esc(p.code)}">${esc(p.code)} — ${esc(p.name)}</option>`).join(''));
+  if (!$('repProj').value) $('repProj').value = PROJ || 'ALL';
+  fillProjectWings();
   fillMaterialSelects(); fillPartySelect(); fillUnitSelect(); fillFormProjects(); fillFormUnits();
   $('catList').innerHTML = [...new Set(D.materials.map(m => m.category).filter(Boolean))].map(c => `<option>${esc(c)}</option>`).join('');
   $('sheetLinkBox').innerHTML = D.sheetUrl ? `All data is stored in the <a href="${esc(D.sheetUrl)}" target="_blank">Google Sheet</a>. Edit or delete wrong entries in the “Transactions” tab.` : '';
   if (D.isAdmin) { renderProjects(); }
 }
+function fillProjectWings() {
+  fillSel('stockWing', wingOptions(PROJ, 'All wings'));
+  fillSel('gWing', wingOptions(PROJ, 'All wings'));
+  fillRepWings();
+}
+function fillRepWings() { fillSel('repWing', wingOptions($('repProj').value, 'All wings')); }
 
 async function onProject() {
   PROJ = $('projSel').value; localStorage.setItem('vg_project', PROJ);
-  $('repProj').value = PROJ; regRows = [];
+  $('repProj').value = PROJ; regRows = []; $('stockWing').value = ''; $('gWing').value = ''; fillProjectWings();
   await run('Loading…', loadStock);
   if ($('v-reg').classList.contains('on')) loadRegister();
 }
@@ -536,50 +613,70 @@ function go(v) {
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   window.scrollTo(0, 0);
   if (v === 'reg' && !regRows.length) loadRegister();
-  if (v === 'admin') { loadUsers(); loadApprovals(); }
-  if (v === 'entry' && !PROJ) toast('No project selected', true);
+  if (v === 'admin') { if (D && D.isAdmin) loadUsers(); else admTab('a'); loadApprovals(); }
+  if (v === 'mr') loadMrs();
+  if (v === 'entry' && D && !CAN.in && !CAN.out) toast('You do not have permission for inward or outward entries', true);
   if (v !== 'entry' && EDIT) exitEdit(true);
 }
 function openEntry(m, matName, unit) {
   if (EDIT) exitEdit(true);
+  if (m === 'IN' && !CAN.in && CAN.out) m = 'OUT';
+  if (m === 'OUT' && !CAN.out && CAN.in) m = 'IN';
   setMode(m);
   // project must be chosen in the form; it is filled in only when starting from a stock line of the current project
   $('fProj').value = matName ? PROJ : '';
+  fillFormWings($('fProj').value, matName ? $('stockWing').value : '');
+  loadMrOptions();
   if (matName) { $('fMat').value = matName; onMatChange(); if (unit) { $('fUnit').value = unit; onUnitChange(); } }
   refreshNo(); go('entry');
 }
+function fillFormWings(code, pick) {
+  $('fWing').innerHTML = code ? wingOptions(code, '— Select wing —') : '<option value="">— Select project first —</option>';
+  const ws = wingsOf(code);
+  $('fWing').value = pick && ws.includes(pick) ? pick : (ws.length === 1 ? ws[0] : '');
+}
 
 /* ---------------- Stock ---------------- */
-async function loadStock() {
+async function loadStock(showBusy) {
   if (!PROJ) return;
-  try { STOCK = await api('getStock', TOKEN, PROJ); renderStock(); fillMaterialSelects(); }
-  catch (e) { toast(e.message, true); }
+  const wing = $('stockWing').value;
+  if (showBusy) $('stockWingNote').textContent = 'Loading…';
+  try {
+    STOCK = await api('getStock', TOKEN, PROJ, wing);
+    renderStock(); fillMaterialSelects(); saveCache();
+  } catch (e) { toast(e.message, true); }
 }
 const isLow = s => s.bal < 0 || (s.min > 0 && s.bal <= s.min && (s.used || s.bal < 0));
 function renderStock() {
+  const wingView = !!STOCK.wing;                       // wing view = movement of one wing, not store stock
+  const low = s => !wingView && isLow(s);
   $('tIn').textContent = STOCK.today.in; $('tOut').textContent = STOCK.today.out;
-  $('tLow').textContent = STOCK.stock.filter(isLow).length;
+  $('tLow').textContent = STOCK.stock.filter(low).length;
   const p = D.projects.find(x => x.code === PROJ);
-  $('stockTitle').textContent = 'Stock — ' + (p ? p.code : '');
+  $('stockTitle').textContent = (wingView ? 'Wing ' + STOCK.wing + ' — ' : 'Stock — ') + (p ? p.code : '');
+  $('stockWingNote').textContent = wingView ? 'net = inward − outward of this wing' : '';
   const q = $('stockSearch').value.trim().toLowerCase(), f = $('stockFilter').value;
   const list = STOCK.stock.filter(s => (!q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)) &&
-    (f === 'all' || (f === 'used' && (s.used || q)) || (f === 'low' && isLow(s))));
+    (f === 'all' || (f === 'used' && (s.used || q)) || (f === 'low' && low(s))));
+  const btn = (t, s) => (t === 'IN' ? CAN.in : CAN.out) ? `<button class="link" style="color:var(--${t === 'IN' ? 'in' : 'out'})" onclick="openEntry('${t}', ${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(s.unit))})">${t === 'IN' ? '+ Inward' : '− Outward'}</button>` : '';
   $('stockList').innerHTML = list.length ? list.map(s => `
-    <div class="card stock-item ${s.bal < 0 ? 'neg' : isLow(s) ? 'low' : ''}">
+    <div class="card stock-item ${!wingView && s.bal < 0 ? 'neg' : low(s) ? 'low' : ''}">
       <div class="n">
-        <div>${esc(s.name)} ${isLow(s) ? '<span class="pill low">' + (s.bal < 0 ? 'NEGATIVE' : 'LOW') + '</span>' : ''}</div>
-        <div class="sub">In ${fmtQ(s.in)} · Out ${fmtQ(s.out)}${s.min ? ' · Min ' + fmtQ(s.min) : ''}${s.category ? ' · ' + esc(s.category) : ''}</div>
-        <div><button class="link" style="color:var(--in)" onclick="openEntry('IN', ${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(s.unit))})">+ Inward</button>
-          &nbsp;&nbsp;<button class="link" style="color:var(--out)" onclick="openEntry('OUT', ${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(s.unit))})">− Outward</button></div>
+        <div>${esc(s.name)} ${low(s) ? '<span class="pill low">' + (s.bal < 0 ? 'NEGATIVE' : 'LOW') + '</span>' : ''}</div>
+        <div class="sub">In ${fmtQ(s.in)} · Out ${fmtQ(s.out)}${s.min && !wingView ? ' · Min ' + fmtQ(s.min) : ''}${s.category ? ' · ' + esc(s.category) : ''}</div>
+        <div>${btn('IN', s)} &nbsp;&nbsp;${btn('OUT', s)}</div>
       </div>
-      <div class="q">${fmtQ(s.bal)}<div class="sub">${esc(s.unit)}</div></div>
-    </div>`).join('') : `<div class="empty">${f === 'used' ? 'No entries in this project yet. Tap INWARD to receive material.' : 'No materials found'}</div>`;
+      <div class="q">${fmtQ(s.bal)}<div class="sub">${esc(s.unit)}${wingView ? ' net' : ''}</div></div>
+    </div>`).join('') : `<div class="empty">${f === 'used' ? (wingView ? 'No entries for this wing yet.' : 'No entries in this project yet. Tap INWARD to receive material.') : 'No materials found'}</div>`;
 }
 
 /* ---------------- Entry form ---------------- */
 let EDIT = null;   // entry being edited
 function setMode(m) {
   mode = m; const isIn = m === 'IN';
+  $('segIn').disabled = !!EDIT || !CAN.in; $('segOut').disabled = !!EDIT || !CAN.out;
+  $('mrBox').classList.toggle('hidden', isIn || !!EDIT);
+  if (!isIn && !EDIT) loadMrOptions();
   $('segIn').classList.toggle('on', isIn); $('segOut').classList.toggle('on', !isIn);
   $('fPartyLbl').textContent = isIn ? 'Supplier *' : 'Issued to (contractor / block) *';
   $('fDateLbl').textContent = isIn ? 'Received date *' : 'Issue date *';
@@ -611,8 +708,11 @@ function fillFormProjects() {
 }
 async function onFormProject() {
   const v = $('fProj').value;
+  fillFormWings(v, $('fWing').value);
+  loadMrOptions();
   if (v && v !== PROJ) {
     PROJ = v; localStorage.setItem('vg_project', PROJ); $('projSel').value = PROJ; $('repProj').value = PROJ; regRows = [];
+    $('stockWing').value = ''; $('gWing').value = ''; fillProjectWings();
     $('fAvail').textContent = 'Loading stock…';
     await loadStock();
   }
@@ -715,7 +815,8 @@ function clearEntryForm() {
 }
 function formEntry() {
   return {
-    project: $('fProj').value, type: mode, date: $('fDate').value, material: $('fMat').value, unit: $('fUnit').value, party: $('fParty').value,
+    project: $('fProj').value, wing: $('fWing').value, mrNo: mode === 'OUT' && !EDIT ? $('fMr').value : '',
+    type: mode, date: $('fDate').value, material: $('fMat').value, unit: $('fUnit').value, party: $('fParty').value,
     qty: num($('fQty').value),
     docNo: mode === 'IN' ? $('fDoc').value.trim() : '', docDate: mode === 'IN' ? $('fDocDate').value : '',
     vehicle: $('fVeh').value, person: mode === 'OUT' ? $('fPerson').value : '', remarks: $('fRem').value,
@@ -725,6 +826,7 @@ function formEntry() {
 function checkEntry(e) {
   if (!e.date) return 'Select date';
   if (!e.project) return 'Select the project';
+  if (!e.wing) return 'Select the wing';
   if (!e.material) return 'Select a material';
   if (!e.unit) return 'Select the unit';
   if (!e.party) return mode === 'IN' ? 'Select the supplier' : 'Select who it is issued to';
@@ -757,16 +859,52 @@ async function submitEntry(addNext) {
       $('savedPdfBtn').classList.add('hidden');
       $('fDate').value = iso(new Date()); onDateChange();
       $('savedDlg').showModal(); go('home');
-    } else if (addNext) { $('fMat').value = ''; $('fUnit').value = ''; onMatChange(); refreshNo(); toast(`Saved ${res.no}`); }
+    } else if (addNext) { $('fMat').value = ''; $('fUnit').value = ''; onMatChange(); refreshNo(); loadMrOptions(); toast(`Saved ${res.no}`); }
     else {
       $('savedTitle').textContent = mode === 'IN' ? 'Inward saved' : 'Outward saved';
       $('savedNo').textContent = res.no;
       $('savedText').textContent = `${fmtQ(e.qty)} ${e.unit} ${e.material} — ${e.party}`;
       $('savedPdfBtn').classList.remove('hidden');
+      $('fMr').value = ''; onMrPick();
       $('savedDlg').showModal(); go('home');
     }
   } catch (err) { toast(err.message, true); if (/^Duplicate/.test(err.message)) reqId = newReqId(); }
   finally { saving = false; busy(false); }
+}
+
+/* ---------------- Outward against a requisition ---------------- */
+let OPEN_MRS = [], mrLoadSeq = 0;
+async function loadMrOptions() {
+  if (mode !== 'OUT' || EDIT) return;
+  const proj = $('fProj').value, my = ++mrLoadSeq, keep = $('fMr').value;
+  if (!proj) { OPEN_MRS = []; $('fMr').innerHTML = '<option value="">— Select project first —</option>'; onMrPick(); return; }
+  try {
+    const list = await api('listRequisitions', TOKEN, { project: proj, status: 'Open' });
+    if (my !== mrLoadSeq) return;
+    OPEN_MRS = list;
+    $('fMr').innerHTML = '<option value="">— Not against a requisition —</option>' + list.map(m =>
+      `<option value="${esc(m.no)}">${esc(m.no)} · Wing ${esc(m.wing)} · ${esc(m.by)}</option>`).join('');
+    $('fMr').value = list.some(m => m.no === keep) ? keep : (PENDING_MR && list.some(m => m.no === PENDING_MR) ? PENDING_MR : '');
+    PENDING_MR = '';
+    onMrPick();
+  } catch (e) { /* requisitions are optional */ }
+}
+let PENDING_MR = '';
+function onMrPick() {
+  const m = OPEN_MRS.find(x => x.no === $('fMr').value);
+  $('mrItemBox').classList.toggle('hidden', !m);
+  if (!m) return;
+  if (wingsOf($('fProj').value).includes(m.wing)) $('fWing').value = m.wing;
+  const left = m.items.map((it, i) => ({ i, it, left: Math.round((it.qty - (it.issued || 0)) * 1000) / 1000 })).filter(x => x.left > 0);
+  $('fMrItem').innerHTML = '<option value="">— Select item —</option>' + left.map(x =>
+    `<option value="${x.i}">${esc(x.it.material)} — pending ${fmtQ(x.left)} ${esc(x.it.unit)}</option>`).join('');
+  if (left.length === 1) { $('fMrItem').value = String(left[0].i); onMrItem(); }
+}
+function onMrItem() {
+  const m = OPEN_MRS.find(x => x.no === $('fMr').value), it = m && m.items[Number($('fMrItem').value)];
+  if (!it || $('fMrItem').value === '') return;
+  $('fMat').value = it.material; onMatChange(); $('fUnit').value = it.unit; onUnitChange();
+  $('fQty').value = Math.round((it.qty - (it.issued || 0)) * 1000) / 1000; calcAmt();
 }
 
 /* ---------------- Edit / cancel entries (admin approval) ---------------- */
@@ -775,7 +913,7 @@ function startEdit(no) {
   EDIT = r;
   setMode(r.type);
   $('segIn').disabled = $('segOut').disabled = true;
-  $('fDate').value = r.dkey; $('fProj').value = r.project; $('fProj').disabled = true;
+  $('fDate').value = r.dkey; $('fProj').value = r.project; $('fProj').disabled = true; fillFormWings(r.project, r.wing);
   $('fMat').value = r.material; $('fUnit').value = r.unit; onMatChange();
   fillPartySelect(r.party);
   $('fQty').value = r.qty;
@@ -805,7 +943,7 @@ async function submitEdit() {
   const e = formEntry();
   const bad = checkEntry(e); if (bad) return toast(bad, true);
   if (!e.reason) return toast('Enter the reason for the change', true);
-  const changes = { date: e.date, material: e.material, unit: e.unit, party: e.party, qty: e.qty, vehicle: e.vehicle, remarks: e.remarks };
+  const changes = { date: e.date, wing: e.wing, material: e.material, unit: e.unit, party: e.party, qty: e.qty, vehicle: e.vehicle, remarks: e.remarks };
   if (EDIT.type === 'IN') { changes.docNo = e.docNo; changes.docDate = e.docDate; } else changes.person = e.person;
   saving = true; busy(true, 'Sending…');
   try {
@@ -825,7 +963,7 @@ async function cancelEntry(no) {
     regRows = []; await loadStock(); loadRegister(); refreshCounts();
   });
 }
-const FIELD_LABEL = { date: 'Date', material: 'Material', party: 'Party', qty: 'Quantity', rate: 'Rate', docNo: 'Challan no.', docDate: 'Challan date', vehicle: 'Vehicle', person: 'Person', remarks: 'Remarks' };
+const FIELD_LABEL = { wing: 'Wing', date: 'Date', material: 'Material', party: 'Party', qty: 'Quantity', rate: 'Rate', docNo: 'Challan no.', docDate: 'Challan date', vehicle: 'Vehicle', person: 'Person', remarks: 'Remarks' };
 function diffHtml(q) {
   if (q.type === 'EDIT') return '<table class="diff">' + Object.keys(q.newVals).map(k =>
     `<tr><td>${esc(FIELD_LABEL[k] || k)}</td><td class="old">${esc(q.oldVals ? q.oldVals[k] : '')}</td><td class="new">${esc(q.newVals[k])}</td></tr>`).join('') + '</table>';
@@ -845,20 +983,21 @@ function reqCard(q, admin) {
       <button class="btn sm green" onclick="decide(${esc(JSON.stringify(q.no))}, true)">✔ Approve</button></div>` : ''}
   </div>`;
 }
-async function loadMyRequests() {
+function renderMyRequests(list) {
   try {
-    const list = await api('listRequests', TOKEN, { status: 'All', project: PROJ });
     const mine = list.filter(q => q.username === D.user.username).slice(0, 10);
     $('myReqs').innerHTML = mine.length ? `<details ${mine.some(q => q.status === 'Pending') ? 'open' : ''}><summary class="sub" style="margin:10px 0;cursor:pointer">
       My requests (${mine.filter(q => q.status === 'Pending').length} waiting for approval)</summary>${mine.map(q => reqCard(q, false)).join('')}</details>` : '';
   } catch (e) { $('myReqs').innerHTML = ''; }
 }
 async function loadApprovals() {
-  if (!D || !D.isAdmin) return;
+  if (!D || !(D.isAdmin || CAN.appr)) return;
   try {
-    const list = await api('listRequests', TOKEN, { status: 'Pending', project: 'ALL' });
-    D.pendingRequests = list.length; setBadges(D.pendingUsers, D.pendingRequests);
-    $('apprList').innerHTML = list.length ? list.map(q => reqCard(q, true)).join('') : '<div class="empty">No requests waiting for approval 👍</div>';
+    const [list, mrs] = await Promise.all([api('listRequests', TOKEN, { status: 'Pending', project: 'ALL' }),
+      api('listRequisitions', TOKEN, { status: 'Pending', project: 'ALL' })]);
+    D.pendingRequests = list.length; D.pendingMrs = mrs.length; setBadges(D.pendingUsers, D.pendingRequests, D.pendingMrs);
+    $('apprList').innerHTML = list.length ? list.map(q => reqCard(q, q.username !== D.user.username || D.isAdmin)).join('') : '<div class="empty">No entry changes waiting 👍</div>';
+    $('apprMrList').innerHTML = mrs.length ? mrs.map(m => mrCard(m)).join('') : '<div class="empty">No requisitions waiting 👍</div>';
   } catch (e) { toast(e.message, true); }
 }
 async function decide(no, approve) {
@@ -866,19 +1005,21 @@ async function decide(no, approve) {
   if (!approve && note === null) return;
   await run(approve ? 'Approving…' : 'Rejecting…', async () => {
     const list = await api('decideRequest', TOKEN, no, approve, note || '');
-    D.pendingRequests = list.length; setBadges(D.pendingUsers, D.pendingRequests);
-    $('apprList').innerHTML = list.length ? list.map(q => reqCard(q, true)).join('') : '<div class="empty">No requests waiting for approval 👍</div>';
+    D.pendingRequests = list.length; setBadges(D.pendingUsers, D.pendingRequests, D.pendingMrs);
+    $('apprList').innerHTML = list.length ? list.map(q => reqCard(q, q.username !== D.user.username || D.isAdmin)).join('') : '<div class="empty">No entry changes waiting 👍</div>';
     toast(no + (approve ? ' approved' : ' rejected')); regRows = []; await loadStock();
   });
 }
-function setBadges(users, reqs) {
-  users = users || 0; reqs = reqs || 0;
-  const n = D && D.isAdmin ? users + reqs : 0;
+function setBadges(users, reqs, mrs) {
+  users = users || 0; reqs = reqs || 0; mrs = mrs || 0;
+  const appr = D && (D.isAdmin || CAN.appr);
+  const n = appr ? (D.isAdmin ? users : 0) + reqs + mrs : 0;
   $('pendBadge').textContent = n; $('pendBadge').classList.toggle('hidden', !n);
-  $('apprCount').textContent = reqs ? '(' + reqs + ')' : ''; $('userCount').textContent = users ? '(' + users + ')' : '';
+  $('mrBadge').textContent = mrs; $('mrBadge').classList.toggle('hidden', !(appr && mrs));
+  $('apprCount').textContent = reqs + mrs ? '(' + (reqs + mrs) + ')' : ''; $('userCount').textContent = users ? '(' + users + ')' : '';
 }
 async function refreshCounts() {
-  try { const d = await api('getInitData', TOKEN); D.pendingUsers = d.pendingUsers; D.pendingRequests = d.pendingRequests; setBadges(D.pendingUsers, D.pendingRequests); } catch (e) {}
+  try { const d = await api('getInitData', TOKEN); D.pendingUsers = d.pendingUsers; D.pendingRequests = d.pendingRequests; D.pendingMrs = d.pendingMrs; setBadges(D.pendingUsers, D.pendingRequests, D.pendingMrs); } catch (e) {}
 }
 
 /* ---------------- Add material / unit / party during entry ---------------- */
@@ -945,29 +1086,127 @@ async function loadRegister() {
   if (!PROJ || !TOKEN) return;
   $('gSummary').textContent = 'Loading…';
   try {
-    regRows = await api('getRegister', TOKEN, { project: PROJ, from: $('gFrom').value, to: $('gTo').value, type: regType, q: $('gQ').value });
+    const data = await api('getRegisterData', TOKEN, { project: PROJ, from: $('gFrom').value, to: $('gTo').value, type: regType, q: $('gQ').value, wing: $('gWing').value });
+    regRows = data.rows; renderMyRequests(data.requests);
     const val = regRows.filter(r => r.type === 'IN').reduce((a, r) => a + r.amount, 0);
-    $('gSummary').textContent = `${regRows.length} entries in ${PROJ}` + (val ? ` · Inward value ${fmtR(val)}` : '');
-    loadMyRequests();
+    $('gSummary').textContent = `${regRows.length} entries in ${PROJ}` + ($('gWing').value ? ' · Wing ' + $('gWing').value : '') + (val ? ` · Inward value ${fmtR(val)}` : '');
     $('regList').innerHTML = regRows.length ? regRows.map(r => {
       const isIn = r.type === 'IN';
       const det = [isIn && r.docNo && 'Challan ' + esc(r.docNo) + (r.docDate ? ' dt ' + esc(r.docDate) : ''), r.vehicle && 'Veh ' + esc(r.vehicle),
         r.person && (isIn ? 'Received by ' : 'Handed to ') + esc(r.person), r.rate ? `@ ${fmtR(r.rate)} = ${fmtR(r.amount)}` : ''].filter(Boolean).join(' · ');
       return `<div class="card tx"><div class="n">
           <div><span class="pill ${isIn ? 'in' : 'out'}">${isIn ? 'IN' : 'OUT'}</span> <b style="font-size:13px">${esc(r.no)}</b> <span class="sub">· ${esc(r.date)}</span></div>
-          <div style="font-weight:600;margin-top:3px">${esc(r.material)}</div>
+          <div style="font-weight:600;margin-top:3px">${esc(r.material)} <span class="pill no">Wing ${esc(r.wing)}</span>${r.mrNo ? ` <span class="pill low">${esc(r.mrNo)}</span>` : ''}</div>
           <div>${isIn ? 'From' : 'To'}: ${esc(r.party)}</div>
           ${det ? `<div class="sub">${det}</div>` : ''}
           ${r.remarks ? `<div class="sub">${esc(r.remarks)}</div>` : ''}
           <div class="sub">Entered by <b>${esc(r.by)}</b> · ${esc(r.at)}</div>
           ${r.approval ? `<div class="sub">✔ ${esc(r.approval)}</div>` : ''}
           <div style="display:flex;flex-wrap:wrap;gap:12px">${r.photo ? `<a class="link" href="${esc(r.photo)}" target="_blank">📷 Photo</a>` : ''}<button class="link" onclick="slipPdf(${esc(JSON.stringify(r.no))})">📄 Slip PDF</button>
-            ${r.pendingRequest ? `<span class="pill pend">⏳ ${esc(r.pendingRequest)} waiting for approval</span>` :
-              `<button class="link" onclick="startEdit(${esc(JSON.stringify(r.no))})">✏ Edit</button><button class="link" style="color:var(--out)" onclick="cancelEntry(${esc(JSON.stringify(r.no))})">✖ Cancel</button>`}</div>
+            ${r.pendingRequest ? `<span class="pill pend">⏳ ${esc(r.pendingRequest)} waiting for approval</span>` : (isIn ? CAN.in : CAN.out) ?
+              `<button class="link" onclick="startEdit(${esc(JSON.stringify(r.no))})">✏ Edit</button><button class="link" style="color:var(--out)" onclick="cancelEntry(${esc(JSON.stringify(r.no))})">✖ Cancel</button>` : ''}</div>
         </div><div class="q ${isIn ? 'in' : 'out'}">${isIn ? '+' : '−'}${fmtQ(r.qty)}<div class="sub">${esc(r.unit)}</div></div></div>`;
     }).join('') : '<div class="empty">No entries for this filter</div>';
   } catch (e) { $('gSummary').textContent = ''; toast(e.message, true); }
 }
+
+/* ---------------- Material Requisition (Indent) ---------------- */
+let MRS = [], mrFilter = 'Active';
+const MR_GROUPS = { Active: ['Pending', 'Approved', 'Partly Issued'], Done: ['Issued', 'Closed', 'Rejected'] };
+const MR_PILL = { Pending: 'pend', Approved: 'ok', 'Partly Issued': 'low', Issued: 'in', Closed: 'no', Rejected: 'out' };
+function paintMrChips() {
+  $('mrChips').innerHTML = [['Active', 'Open'], ['Done', 'Completed'], ['All', 'All']].map(([k, l]) =>
+    `<button class="${k === mrFilter ? 'on' : ''}" onclick="mrFilter='${k}';paintMrChips();renderMrs()">${l}</button>`).join('');
+}
+async function loadMrs() {
+  if (!PROJ) return;
+  paintMrChips(); $('mrSummary').textContent = 'Loading…';
+  try { MRS = await api('listRequisitions', TOKEN, { project: PROJ, status: 'All' }); renderMrs(); }
+  catch (e) { $('mrSummary').textContent = ''; toast(e.message, true); }
+}
+function renderMrs() {
+  const list = MRS.filter(m => mrFilter === 'All' || MR_GROUPS[mrFilter].includes(m.status));
+  $('mrSummary').textContent = `${list.length} requisition${list.length === 1 ? '' : 's'} in ${PROJ}`;
+  $('mrList').innerHTML = list.length ? list.map(m => mrCard(m)).join('') : '<div class="empty">No requisitions here</div>';
+}
+function mrCard(m) {
+  const open = ['Approved', 'Partly Issued'].includes(m.status), mine = m.username === D.user.username;
+  const canDecide = CAN.appr && m.status === 'Pending' && (!mine || D.isAdmin);
+  const J = esc(JSON.stringify(m.no));
+  return `<div class="card">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b>${esc(m.no)}</b><span class="pill no">Wing ${esc(m.wing)}</span>
+      <span style="flex:1"></span><span class="pill ${MR_PILL[m.status] || 'no'}">${esc(m.status)}</span></div>
+    <div class="sub">${esc(m.project)} · Required by <b>${esc(m.requiredBy)}</b> · by ${esc(m.by)} · ${esc(m.at)}</div>
+    ${m.purpose ? `<div class="sub">Purpose: ${esc(m.purpose)}</div>` : ''}
+    <table class="itbl"><tr><th>Material</th><th class="r">Req.</th><th class="r">Issued</th><th class="r">Pending</th></tr>
+      ${m.items.map(it => `<tr><td>${esc(it.material)} <span class="sub">${esc(it.unit)}</span></td><td class="r">${fmtQ(it.qty)}</td>
+        <td class="r">${fmtQ(it.issued || 0)}</td><td class="r"><b>${fmtQ(Math.max(0, it.qty - (it.issued || 0)))}</b></td></tr>`).join('')}</table>
+    ${m.decidedBy ? `<div class="sub">${esc(m.status === 'Rejected' ? 'Rejected' : m.status === 'Closed' ? 'Closed' : 'Approved')} by ${esc(m.decidedBy)} · ${esc(m.decidedAt)}${m.note ? ' · ' + esc(m.note) : ''}</div>` : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center">
+      <button class="link" onclick="mrPdf(${J})">📄 PDF</button>
+      ${CAN.out && open ? `<button class="btn sm red" onclick="issueMr(${J})">↑ Issue material</button>` : ''}
+      ${canDecide ? `<button class="btn sm red" onclick="decideMr(${J}, false)">✖ Reject</button><button class="btn sm green" onclick="decideMr(${J}, true)">✔ Approve</button>` : ''}
+      ${CAN.appr && open ? `<button class="btn sm ghost" onclick="closeMr(${J})">Close</button>` : ''}
+    </div></div>`;
+}
+let mrReqId = newReqId();
+function openMrForm() {
+  if (!CAN.req) return toast('You do not have permission to raise requisitions', true);
+  $('mProj').innerHTML = '<option value="">— Select project —</option>' + D.projects.map(p => `<option value="${esc(p.code)}">${esc(p.name)} (${esc(p.prefix)})</option>`).join('');
+  $('mProj').value = PROJ; fillMrWings();
+  const t = new Date(); $('mNeed').min = iso(t); t.setDate(t.getDate() + 1); $('mNeed').value = iso(t);
+  $('mPurpose').value = ''; $('mItems').innerHTML = ''; addMrItem();
+  $('mrForm').classList.remove('hidden'); $('mrForm').scrollIntoView({ behavior: 'smooth' });
+}
+function fillMrWings() { const ws = wingsOf($('mProj').value); $('mWing').innerHTML = wingOptions($('mProj').value, '— Select wing —'); if (ws.length === 1) $('mWing').value = ws[0]; }
+function addMrItem() {
+  const div = document.createElement('div'); div.className = 'mritem';
+  div.innerHTML = `<select class="mi-mat" style="flex:2" onchange="const m=D.materials.find(x=>x.name===this.value); if(m) this.parentNode.querySelector('.mi-unit').value=m.unit">
+      <option value="">— Material —</option>${D.materials.map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('')}</select>
+    <input class="mi-qty" inputmode="decimal" placeholder="Qty" style="flex:1">
+    <select class="mi-unit" style="flex:1"><option value="">Unit</option>${D.units.map(u => `<option>${esc(u)}</option>`).join('')}</select>
+    <button class="x" title="Remove" onclick="this.parentNode.remove()">✖</button>`;
+  $('mItems').appendChild(div);
+}
+async function submitMr() {
+  const items = [...document.querySelectorAll('#mItems .mritem')].map(r => ({ material: r.querySelector('.mi-mat').value,
+    unit: r.querySelector('.mi-unit').value, qty: num(r.querySelector('.mi-qty').value) })).filter(it => it.material || it.qty);
+  const d = { project: $('mProj').value, wing: $('mWing').value, requiredBy: $('mNeed').value, purpose: $('mPurpose').value, items: items, reqId: mrReqId };
+  if (!d.project) return toast('Select the project', true);
+  if (!d.wing) return toast('Select the wing', true);
+  if (!d.requiredBy) return toast('Select the required-by date', true);
+  if (!items.length) return toast('Add at least one material', true);
+  const bad = items.find(it => !it.material || !it.unit || !(it.qty > 0));
+  if (bad) return toast('Fill material, quantity and unit on every line', true);
+  await run('Submitting…', async () => {
+    const r = await api('createRequisition', TOKEN, d);
+    mrReqId = newReqId(); $('mrForm').classList.add('hidden');
+    if (d.project !== PROJ) { $('projSel').value = d.project; await onProject(); }
+    toast('Requisition ' + r.no + ' sent for approval'); mrFilter = 'Active'; await loadMrs();
+  });
+}
+async function decideMr(no, approve) {
+  const note = approve ? '' : prompt('Reason for rejecting ' + no + ' (optional):');
+  if (!approve && note === null) return;
+  await run(approve ? 'Approving…' : 'Rejecting…', async () => {
+    await api('decideRequisition', TOKEN, no, approve, note || '');
+    toast(no + (approve ? ' approved' : ' rejected'));
+    if ($('v-mr').classList.contains('on')) await loadMrs(); else await loadApprovals();
+    refreshCounts();
+  });
+}
+async function closeMr(no) {
+  const note = prompt('Close ' + no + '? Nothing more can be issued against it.\nReason:', 'Not required any more');
+  if (note === null) return;
+  await run('Closing…', async () => { await api('closeRequisition', TOKEN, no, note); toast(no + ' closed'); await loadMrs(); });
+}
+function issueMr(no) {
+  const m = MRS.find(x => x.no === no) || {};
+  openEntry('OUT');
+  $('fProj').value = m.project || PROJ; PENDING_MR = no;
+  onFormProject();
+}
+async function mrPdf(no) { await run('Generating PDF…', async () => showPdf(await api('generatePdf', TOKEN, { kind: 'mr', no: no }))); }
 
 /* ---------------- Reports & PDF ---------------- */
 let repPeriod = 'month';
@@ -977,7 +1216,7 @@ function paintRepChips() {
 function setRepPeriod(p) { repPeriod = p; const [a, b] = periodRange(p); $('repFrom').value = a ? iso(a) : ''; $('repTo').value = b ? iso(b) : ''; paintRepChips(); }
 function onRepKind() { $('repMatBox').classList.toggle('hidden', $('repKind').value !== 'ledger'); }
 function repParams() {
-  return { kind: $('repKind').value, project: $('repProj').value, from: $('repFrom').value, to: $('repTo').value, material: $('repMat').value };
+  return { kind: $('repKind').value, project: $('repProj').value, wing: $('repWing').value, from: $('repFrom').value, to: $('repTo').value, material: $('repMat').value };
 }
 async function viewReport() {
   await run('Preparing report…', async () => {
@@ -1007,6 +1246,7 @@ async function slipPdf(no) { await run('Generating PDF…', async () => showPdf(
 
 /* ---------------- Admin ---------------- */
 function admTab(t) {
+  if (D && !D.isAdmin) t = 'a';
   $('admTabA').classList.toggle('on', t === 'a'); $('admTabU').classList.toggle('on', t === 'u'); $('admTabP').classList.toggle('on', t === 'p');
   $('admApprovals').classList.toggle('hidden', t !== 'a'); $('admUsers').classList.toggle('hidden', t !== 'u'); $('admProjects').classList.toggle('hidden', t !== 'p');
 }
@@ -1031,6 +1271,10 @@ function renderUsers() {
         <label><input type="checkbox" value="ALL" ${all ? 'checked' : ''} onchange="toggleAll(${i},this)"> All projects</label>
         ${projs.map(p => `<label><input type="checkbox" value="${esc(p.code)}" ${all || u.projects.includes(p.code) ? 'checked' : ''} ${all ? 'disabled' : ''}> ${esc(p.code)}</label>`).join('')}
       </div>
+      <label>Permissions</label>
+      ${u.role === 'Admin' ? '<div class="sub">Admin — can do everything</div>' : `<div class="checks" id="pp${i}">
+        ${[['Storekeeper', 'Storekeeper (inward)'], ['Issuer', 'Issuer (outward)'], ['Approver', 'Approver'], ['Requester', 'Requester (indent)']].map(([k, l]) =>
+          `<label><input type="checkbox" value="${k}" ${(u.perms || []).includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</div>`}
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px">
         ${u.status !== 'Approved' ? `<button class="btn sm green" onclick="saveUser(${i},'Approved')">✔ Approve</button>` : `<button class="btn sm ghost" onclick="saveUser(${i})">Save access</button>`}
         ${u.status === 'Pending' ? `<button class="btn sm red" onclick="saveUser(${i},'Rejected')">✖ Reject</button>` : ''}
@@ -1049,7 +1293,8 @@ async function saveUser(i, status) {
   const u = USERS[i], projects = selectedProjects(i);
   if (status === 'Approved' && !projects.length) return toast('Tick at least one project for this user', true);
   await run('Saving…', async () => {
-    USERS = await api('updateUser', TOKEN, { username: u.username, status: status, projects: projects });
+    const pp = $('pp' + i), perms = pp ? [...pp.querySelectorAll('input:checked')].map(x => x.value) : undefined;
+    USERS = await api('updateUser', TOKEN, { username: u.username, status: status, projects: projects, perms: perms });
     renderUsers(); toast(status ? u.name + ': ' + status : 'Access saved');
   });
 }
@@ -1066,18 +1311,25 @@ async function resetPw(i) {
 }
 function renderProjects() {
   $('projList').innerHTML = D.allProjects.map(p => `<div class="card" style="display:flex;align-items:center;gap:8px">
-    <div style="flex:1"><b>${esc(p.code)}</b> — ${esc(p.name)}<div class="sub">Entry no. GRN/${esc(p.prefix)}/… · ISS/${esc(p.prefix)}/…${p.location ? ' · ' + esc(p.location) : ''}</div></div>
+    <div style="flex:1"><b>${esc(p.code)}</b> — ${esc(p.name)}<div class="sub">Entry no. GRN/${esc(p.prefix)}/… · ISS/${esc(p.prefix)}/… · MR/${esc(p.prefix)}/…${p.location ? ' · ' + esc(p.location) : ''}</div>
+      <div class="sub">Wings: <b>${esc((p.wings || []).join(', '))}</b> <button class="link" onclick="editWings(${esc(JSON.stringify(p.code))})">✏ Edit wings</button></div></div>
     <span class="pill ${p.status === 'Active' ? 'ok' : 'no'}">${esc(p.status)}</span>
     <button class="btn sm ghost" onclick="projStatus(${esc(JSON.stringify(p.code))},'${p.status === 'Active' ? 'Closed' : 'Active'}')">${p.status === 'Active' ? 'Close' : 'Reopen'}</button>
   </div>`).join('') || '<div class="empty">No projects yet</div>';
 }
 async function addProject() {
-  const d = { code: $('pjCode').value.trim(), name: $('pjName').value.trim(), location: $('pjLoc').value.trim(), prefix: $('pjPrefix').value.trim() };
+  const d = { code: $('pjCode').value.trim(), name: $('pjName').value.trim(), location: $('pjLoc').value.trim(), prefix: $('pjPrefix').value.trim(), wings: $('pjWings').value };
   await run('Saving…', async () => {
     D = await api('addProject', TOKEN, d);
-    ['pjCode', 'pjName', 'pjLoc', 'pjPrefix'].forEach(id => $(id).value = '');
+    ['pjCode', 'pjName', 'pjLoc', 'pjPrefix', 'pjWings'].forEach(id => $(id).value = '');
     renderShell(); await loadStock(); renderUsers(); toast('Project added: ' + d.code.toUpperCase());
   });
+}
+async function editWings(code) {
+  const p = D.allProjects.find(x => x.code === code);
+  const v = prompt('Wings of ' + p.name + ' (comma separated, e.g. A, B, C, Common).\nRenaming a wing does not change old entries.', (p.wings || []).join(', '));
+  if (v === null) return;
+  await run('Saving…', async () => { D = await api('setProjectWings', TOKEN, code, v); renderShell(); toast('Wings saved'); });
 }
 async function projStatus(code, status) {
   if (status === 'Closed' && !confirm('Close project ' + code + '? No new entries can be made in it (reports still work).')) return;
@@ -1086,6 +1338,7 @@ async function projStatus(code, status) {
 
 /* ---------------- Init ---------------- */
 setMode('IN'); { const [a, b] = periodRange('month'); $('gFrom').value = iso(a); $('gTo').value = iso(b); } paintChips(); setRepPeriod('month');
+if (!TOKEN) api('ping').catch(() => {});   // wake the server while the login screen is shown
 start();
 </script>
 </body>
