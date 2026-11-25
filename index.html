@@ -93,6 +93,9 @@
   .seg button:disabled{opacity:.45}
   .diff td{padding:4px 6px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
   .diff .old{color:#999;text-decoration:line-through}.diff .new{color:var(--in);font-weight:700}
+  .nobox{background:var(--brand-l);border-radius:10px;padding:10px 12px;margin-bottom:4px}
+  .nobox span{font-size:12px;color:var(--brand-d);display:block}
+  .nobox b{font-size:19px;color:var(--brand);letter-spacing:.3px}
   .entry-no{font-size:20px;font-weight:800;color:var(--brand);text-align:center;margin:8px 0}
 </style>
 </head>
@@ -176,10 +179,13 @@
         <button class="link" onclick="exitEdit()">✖ Stop editing</button>
       </div>
       <div class="card">
-        <div class="sub" id="autoNoNote">Entry No. is generated automatically when you save.</div>
+        <div class="nobox"><span id="fNoLbl">GRN No.</span><b id="fNo">—</b><div class="sub" id="fNoHint">Select the project to see the number</div></div>
         <label id="fDateLbl">Received date *</label>
         <input type="date" id="fDate" onchange="onDateChange()">
         <div class="hint warn hidden" id="backNote">⚠ Back-dated entry — it will be saved after admin approval.</div>
+
+        <label>Project *</label>
+        <select id="fProj" onchange="onFormProject()"></select>
 
         <label>Material *</label>
         <div class="with-add">
@@ -202,9 +208,8 @@
 
         <div class="row">
           <div><label>Quantity *</label><input id="fQty" inputmode="decimal" placeholder="0" oninput="calcAmt()"></div>
-          <div id="rateBox"><label>Rate (₹ / unit)</label><input id="fRate" inputmode="decimal" placeholder="optional" oninput="calcAmt()"></div>
+          <div><label>Unit *</label><select id="fUnit" onchange="onUnitChange()"></select></div>
         </div>
-        <div class="amount" id="fAmt"></div>
         <div class="hint err" id="fQtyErr"></div>
 
         <label>Vehicle No.</label>
@@ -298,11 +303,13 @@
           <h2 style="margin-top:0">Add project</h2>
           <div class="row">
             <div style="flex:0 0 35%"><label>Code *</label><input id="pjCode" placeholder="VG-01" style="text-transform:uppercase"></div>
-            <div><label>Project name *</label><input id="pjName" placeholder="e.g. Vighnaharta Heights"></div>
+            <div><label>Project name *</label><input id="pjName" placeholder="e.g. Life Canvas Aurum" oninput="$('pjPrefix').placeholder = initials(this.value) || 'LCA'"></div>
           </div>
+          <label>Short name for entry no. (optional)</label><input id="pjPrefix" placeholder="LCA" style="text-transform:uppercase" maxlength="8">
+          <div class="hint">Left empty, the first letters of the project name are used: Life Canvas Aurum → GRN/LCA/26-27/0001</div>
           <label>Location</label><input id="pjLoc">
           <button class="btn" style="width:100%;margin-top:12px" onclick="addProject()">Add project</button>
-          <p class="hint">The project code appears in every entry number, e.g. GRN/VG-01/25-26/0001.</p>
+          <p class="hint">The project code is used inside the app; the short name appears in entry numbers.</p>
         </div>
         <div id="projList"></div>
         <p class="sub" id="sheetLinkBox"></p>
@@ -510,7 +517,7 @@ function renderShell() {
   $('repProj').innerHTML = (D.projects.length > 1 ? '<option value="ALL">All my projects</option>' : '') +
     D.projects.map(p => `<option value="${esc(p.code)}">${esc(p.code)} — ${esc(p.name)}</option>`).join('');
   $('repProj').value = PROJ || 'ALL';
-  fillMaterialSelects(); fillPartySelect(); fillUnitSelect();
+  fillMaterialSelects(); fillPartySelect(); fillUnitSelect(); fillFormProjects(); fillFormUnits();
   $('catList').innerHTML = [...new Set(D.materials.map(m => m.category).filter(Boolean))].map(c => `<option>${esc(c)}</option>`).join('');
   $('sheetLinkBox').innerHTML = D.sheetUrl ? `All data is stored in the <a href="${esc(D.sheetUrl)}" target="_blank">Google Sheet</a>. Edit or delete wrong entries in the “Transactions” tab.` : '';
   if (D.isAdmin) { renderProjects(); }
@@ -533,7 +540,14 @@ function go(v) {
   if (v === 'entry' && !PROJ) toast('No project selected', true);
   if (v !== 'entry' && EDIT) exitEdit(true);
 }
-function openEntry(m, matName) { if (EDIT) exitEdit(true); setMode(m); if (matName) { $('fMat').value = matName; onMatChange(); } go('entry'); }
+function openEntry(m, matName, unit) {
+  if (EDIT) exitEdit(true);
+  setMode(m);
+  // project must be chosen in the form; it is filled in only when starting from a stock line of the current project
+  $('fProj').value = matName ? PROJ : '';
+  if (matName) { $('fMat').value = matName; onMatChange(); if (unit) { $('fUnit').value = unit; onUnitChange(); } }
+  refreshNo(); go('entry');
+}
 
 /* ---------------- Stock ---------------- */
 async function loadStock() {
@@ -555,8 +569,8 @@ function renderStock() {
       <div class="n">
         <div>${esc(s.name)} ${isLow(s) ? '<span class="pill low">' + (s.bal < 0 ? 'NEGATIVE' : 'LOW') + '</span>' : ''}</div>
         <div class="sub">In ${fmtQ(s.in)} · Out ${fmtQ(s.out)}${s.min ? ' · Min ' + fmtQ(s.min) : ''}${s.category ? ' · ' + esc(s.category) : ''}</div>
-        <div><button class="link" style="color:var(--in)" onclick="openEntry('IN', ${esc(JSON.stringify(s.name))})">+ Inward</button>
-          &nbsp;&nbsp;<button class="link" style="color:var(--out)" onclick="openEntry('OUT', ${esc(JSON.stringify(s.name))})">− Outward</button></div>
+        <div><button class="link" style="color:var(--in)" onclick="openEntry('IN', ${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(s.unit))})">+ Inward</button>
+          &nbsp;&nbsp;<button class="link" style="color:var(--out)" onclick="openEntry('OUT', ${esc(JSON.stringify(s.name))}, ${esc(JSON.stringify(s.unit))})">− Outward</button></div>
       </div>
       <div class="q">${fmtQ(s.bal)}<div class="sub">${esc(s.unit)}</div></div>
     </div>`).join('') : `<div class="empty">${f === 'used' ? 'No entries in this project yet. Tap INWARD to receive material.' : 'No materials found'}</div>`;
@@ -569,7 +583,7 @@ function setMode(m) {
   $('segIn').classList.toggle('on', isIn); $('segOut').classList.toggle('on', !isIn);
   $('fPartyLbl').textContent = isIn ? 'Supplier *' : 'Issued to (contractor / block) *';
   $('fDateLbl').textContent = isIn ? 'Received date *' : 'Issue date *';
-  $('rateBox').style.display = isIn ? '' : 'none';
+  $('fNoLbl').textContent = isIn ? 'GRN No. (inward entry no.)' : 'Issue No. (Issue Slip No.)';
   $('challanBox').classList.toggle('hidden', !isIn); $('slipNote').classList.toggle('hidden', isIn);
   $('receivedBox').classList.toggle('hidden', !isIn); $('handedBox').classList.toggle('hidden', isIn);
   $('fRemLbl').textContent = isIn ? 'Remarks (quality, shortage…)' : 'Purpose / Remarks';
@@ -578,6 +592,7 @@ function setMode(m) {
   $('fDate').max = $('fDocDate').max = iso(new Date());
   fillPartySelect(); calcAmt(); onDateChange();
 }
+const initials = n => String(n || '').toUpperCase().replace(/[^A-Z0-9 ]+/g, ' ').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 6);
 const isBackdated = () => !!$('fDate').value && $('fDate').value < iso(new Date());
 function onDateChange() {
   const back = !EDIT && isBackdated() && D && !D.isAdmin;
@@ -585,15 +600,63 @@ function onDateChange() {
   $('reasonBox').classList.toggle('hidden', !(back || EDIT));
   $('fReasonLbl').textContent = EDIT ? 'Reason for change *' : 'Reason for back-dated entry *';
   if (!EDIT) $('saveBtn').textContent = back ? 'Send for approval' : 'Save';
+  if (D) refreshNo();
   $('saveNextBtn').classList.toggle('hidden', !!EDIT);
 }
-function stockOf(name) { return STOCK.stock.find(s => s.name === name); }
+function stockOf(name, unit) { return STOCK.stock.find(s => s.name === name && s.unit === unit); }
+function fillFormProjects() {
+  const cur = $('fProj').value;
+  $('fProj').innerHTML = '<option value="">— Select project —</option>' + D.projects.map(p => `<option value="${esc(p.code)}">${esc(p.name)} (${esc(p.prefix)})</option>`).join('');
+  $('fProj').value = D.projects.some(p => p.code === cur) ? cur : '';
+}
+async function onFormProject() {
+  const v = $('fProj').value;
+  if (v && v !== PROJ) {
+    PROJ = v; localStorage.setItem('vg_project', PROJ); $('projSel').value = PROJ; $('repProj').value = PROJ; regRows = [];
+    $('fAvail').textContent = 'Loading stock…';
+    await loadStock();
+  }
+  onMatChange(); refreshNo();
+}
+let noSeq = 0;
+async function refreshNo() {
+  const my = ++noSeq;
+  if (EDIT) { $('fNo').textContent = EDIT.no; $('fNoHint').textContent = 'Entry number does not change when editing'; return; }
+  const proj = $('fProj').value, date = $('fDate').value;
+  if (!proj) { $('fNo').textContent = '—'; $('fNoHint').textContent = 'Select the project to see the number'; return; }
+  $('fNoHint').textContent = 'Getting next number…';
+  try {
+    const r = await api('nextEntryNo', TOKEN, proj, mode, date);
+    if (my !== noSeq) return;
+    if (r.needsApproval) { $('fNo').textContent = 'Given after approval'; $('fNoHint').textContent = 'Back-dated entries get their number when the admin approves them'; }
+    else { $('fNo').textContent = r.no; $('fNoHint').textContent = 'Generated automatically; it is confirmed when you save'; }
+  } catch (e) { if (my === noSeq) { $('fNo').textContent = '—'; $('fNoHint').textContent = e.message; } }
+}
+function fillFormUnits(select) {
+  const cur = select || $('fUnit').value;
+  $('fUnit').innerHTML = '<option value="">— Unit —</option>' + D.units.map(u => `<option>${esc(u)}</option>`).join('') + '<option value="__new">+ Add new unit…</option>';
+  $('fUnit').value = D.units.includes(cur) ? cur : '';
+}
+let unitTarget = 'mat';
+function onUnitChange() {
+  if ($('fUnit').value === '__new') { $('fUnit').value = ''; unitTarget = 'form'; openUnitDlg(true); return; }
+  showAvail(); calcAmt();
+}
+function showAvail() {
+  const name = $('fMat').value, unit = $('fUnit').value;
+  if (!name) { $('fAvail').textContent = ''; return; }
+  const lines = STOCK.stock.filter(s => s.name === name && (s.used || s.bal));
+  const proj = $('fProj').value;
+  $('fAvail').textContent = !proj ? 'Select the project to see stock' :
+    'Stock in ' + proj + ': ' + (lines.length ? lines.map(s => fmtQ(s.bal) + ' ' + s.unit).join(', ') : '0') +
+    (unit && lines.length && !lines.some(s => s.unit === unit) ? ' (none in ' + unit + ')' : '');
+}
 function fillMaterialSelects() {
   if (!D) return;
   const cur = $('fMat').value;
   $('fMat').innerHTML = '<option value="">— Select material —</option>' + D.materials.map(m => {
-    const s = stockOf(m.name);
-    return `<option value="${esc(m.name)}">${esc(m.name)} (${esc(m.unit)})${s ? ' — stock ' + fmtQ(s.bal) : ''}</option>`;
+    const lines = STOCK.stock.filter(s => s.name === m.name && (s.used || s.bal));
+    return `<option value="${esc(m.name)}">${esc(m.name)}${lines.length ? ' — stock ' + lines.map(s => fmtQ(s.bal) + ' ' + s.unit).join(', ') : ''}</option>`;
   }).join('');
   $('fMat').value = cur; onMatChange();
   const rc = $('repMat').value;
@@ -614,15 +677,18 @@ function fillUnitSelect(select) {
   $('mUnit').value = D.units.includes(cur) ? cur : '';
 }
 function onMatChange() {
-  const m = D && D.materials.find(x => x.name === $('fMat').value), s = m && stockOf(m.name);
-  $('fAvail').textContent = m ? `Stock in ${PROJ}: ${fmtQ(s ? s.bal : 0)} ${m.unit}` : '';
-  calcAmt();
+  const m = D && D.materials.find(x => x.name === $('fMat').value);
+  if (m && !EDIT) {
+    // default unit: the unit already used for this material in this project, else the material's own unit
+    const used = STOCK.stock.filter(s => s.name === m.name && s.used);
+    $('fUnit').value = used.length === 1 ? used[0].unit : m.unit;
+  }
+  showAvail(); calcAmt();
 }
 function calcAmt() {
-  const q = num($('fQty').value), r = num($('fRate').value), s = stockOf($('fMat').value);
-  $('fAmt').textContent = mode === 'IN' && q && r ? 'Amount: ' + fmtR(q * r) : '';
+  const q = num($('fQty').value), s = stockOf($('fMat').value, $('fUnit').value);
   const bal = s ? s.bal : 0;
-  $('fQtyErr').textContent = mode === 'OUT' && $('fMat').value && q > bal ? `Exceeds available stock (${fmtQ(bal)})` : '';
+  $('fQtyErr').textContent = mode === 'OUT' && $('fMat').value && $('fUnit').value && q > bal ? `Exceeds available stock (${fmtQ(bal)} ${$('fUnit').value})` : '';
 }
 /** Photos are always resized to medium quality: max 1280 px, JPEG 60 %. */
 function onPhoto() {
@@ -644,13 +710,13 @@ function onPhoto() {
 }
 let saving = false;
 function clearEntryForm() {
-  ['fQty', 'fRate', 'fDoc', 'fDocDate', 'fVeh', 'fRem', 'fPhoto', 'fReason', 'fPerson'].forEach(id => $(id).value = '');
+  ['fQty', 'fDoc', 'fDocDate', 'fVeh', 'fRem', 'fPhoto', 'fReason', 'fPerson'].forEach(id => $(id).value = '');
   photo = null; $('photoPrev').style.display = 'none'; $('photoInfo').textContent = '';
 }
 function formEntry() {
   return {
-    project: PROJ, type: mode, date: $('fDate').value, material: $('fMat').value, party: $('fParty').value,
-    qty: num($('fQty').value), rate: mode === 'IN' ? num($('fRate').value) : 0,
+    project: $('fProj').value, type: mode, date: $('fDate').value, material: $('fMat').value, unit: $('fUnit').value, party: $('fParty').value,
+    qty: num($('fQty').value),
     docNo: mode === 'IN' ? $('fDoc').value.trim() : '', docDate: mode === 'IN' ? $('fDocDate').value : '',
     vehicle: $('fVeh').value, person: mode === 'OUT' ? $('fPerson').value : '', remarks: $('fRem').value,
     reason: $('fReason').value.trim(),
@@ -658,7 +724,9 @@ function formEntry() {
 }
 function checkEntry(e) {
   if (!e.date) return 'Select date';
+  if (!e.project) return 'Select the project';
   if (!e.material) return 'Select a material';
+  if (!e.unit) return 'Select the unit';
   if (!e.party) return mode === 'IN' ? 'Select the supplier' : 'Select who it is issued to';
   if (mode === 'IN' && !e.docNo) return 'Enter challan / invoice no.';
   if (mode === 'IN' && !e.docDate) return 'Select challan date';
@@ -668,14 +736,13 @@ function checkEntry(e) {
 }
 async function submitEntry(addNext) {
   if (saving) return;
-  if (!PROJ) return toast('Select a project first', true);
   if (EDIT) return submitEdit();
   const e = formEntry(); e.reqId = reqId; e.photo = photo;
   const bad = checkEntry(e); if (bad) return toast(bad, true);
   const back = isBackdated() && !D.isAdmin;
   if (back && !e.reason) return toast('Enter the reason for the back-dated entry', true);
-  const s = stockOf(e.material);
-  if (mode === 'OUT' && e.qty > (s ? s.bal : 0)) return toast(`Only ${fmtQ(s ? s.bal : 0)} in stock`, true);
+  const s = stockOf(e.material, e.unit);
+  if (mode === 'OUT' && e.qty > (s ? s.bal : 0)) return toast(`Only ${fmtQ(s ? s.bal : 0)} ${e.unit} in stock`, true);
   saving = true; busy(true, 'Saving…');
   try {
     const res = await api('saveEntry', TOKEN, e);
@@ -686,15 +753,15 @@ async function submitEntry(addNext) {
       D.pendingRequests = (D.pendingRequests || 0) + (res.duplicate ? 0 : 1);
       $('savedTitle').textContent = 'Sent for admin approval';
       $('savedNo').textContent = res.requestNo;
-      $('savedText').textContent = `Back-dated ${mode === 'IN' ? 'inward' : 'outward'}: ${fmtQ(e.qty)} ${s ? s.unit : ''} ${e.material}. The entry number is given when the admin approves it.`;
+      $('savedText').textContent = `Back-dated ${mode === 'IN' ? 'inward' : 'outward'}: ${fmtQ(e.qty)} ${e.unit} ${e.material}. The entry number is given when the admin approves it.`;
       $('savedPdfBtn').classList.add('hidden');
       $('fDate').value = iso(new Date()); onDateChange();
       $('savedDlg').showModal(); go('home');
-    } else if (addNext) { $('fMat').value = ''; onMatChange(); toast(`Saved ${res.no}`); }
+    } else if (addNext) { $('fMat').value = ''; $('fUnit').value = ''; onMatChange(); refreshNo(); toast(`Saved ${res.no}`); }
     else {
       $('savedTitle').textContent = mode === 'IN' ? 'Inward saved' : 'Outward saved';
       $('savedNo').textContent = res.no;
-      $('savedText').textContent = `${fmtQ(e.qty)} ${s ? s.unit : ''} ${e.material} — ${e.party}`;
+      $('savedText').textContent = `${fmtQ(e.qty)} ${e.unit} ${e.material} — ${e.party}`;
       $('savedPdfBtn').classList.remove('hidden');
       $('savedDlg').showModal(); go('home');
     }
@@ -708,9 +775,10 @@ function startEdit(no) {
   EDIT = r;
   setMode(r.type);
   $('segIn').disabled = $('segOut').disabled = true;
-  $('fDate').value = r.dkey; $('fMat').value = r.material; onMatChange();
+  $('fDate').value = r.dkey; $('fProj').value = r.project; $('fProj').disabled = true;
+  $('fMat').value = r.material; $('fUnit').value = r.unit; onMatChange();
   fillPartySelect(r.party);
-  $('fQty').value = r.qty; $('fRate').value = r.rate || '';
+  $('fQty').value = r.qty;
   $('fDoc').value = r.type === 'IN' ? r.docNo : ''; $('fDocDate').value = r.docDateKey || '';
   $('fVeh').value = r.vehicle; $('fPerson').value = r.type === 'OUT' ? r.person : ''; $('fRem').value = r.remarks;
   $('fReceived').textContent = r.type === 'IN' ? r.person : '';
@@ -719,17 +787,17 @@ function startEdit(no) {
   $('editTitle').textContent = 'Editing ' + r.no;
   $('editSub').textContent = D.isAdmin ? 'You are admin: changes are saved immediately and recorded.' :
     'Changes are sent to the admin for approval. The entry stays as it is until approved.';
-  $('photoBox').classList.add('hidden'); $('autoNoNote').classList.add('hidden');
+  $('photoBox').classList.add('hidden');
   $('saveBtn').textContent = D.isAdmin ? 'Save changes' : 'Send for approval';
-  onDateChange(); calcAmt();
+  onDateChange(); calcAmt(); refreshNo();
   go('entry'); EDIT = r;
 }
 function exitEdit(silent) {
   EDIT = null;
   $('segIn').disabled = $('segOut').disabled = false;
-  $('editBanner').classList.add('hidden'); $('photoBox').classList.remove('hidden'); $('autoNoNote').classList.remove('hidden');
+  $('editBanner').classList.add('hidden'); $('photoBox').classList.remove('hidden'); $('fProj').disabled = false;
   $('fReceived').textContent = D ? D.user.name + ' (you)' : '';
-  clearEntryForm(); $('fDate').value = iso(new Date()); $('fMat').value = ''; $('fParty').value = '';
+  clearEntryForm(); $('fDate').value = iso(new Date()); $('fMat').value = ''; $('fUnit').value = ''; $('fParty').value = ''; $('fProj').value = '';
   setMode(mode);
   if (!silent) go('reg');
 }
@@ -737,7 +805,7 @@ async function submitEdit() {
   const e = formEntry();
   const bad = checkEntry(e); if (bad) return toast(bad, true);
   if (!e.reason) return toast('Enter the reason for the change', true);
-  const changes = { date: e.date, material: e.material, party: e.party, qty: e.qty, rate: e.rate, vehicle: e.vehicle, remarks: e.remarks };
+  const changes = { date: e.date, material: e.material, unit: e.unit, party: e.party, qty: e.qty, vehicle: e.vehicle, remarks: e.remarks };
   if (EDIT.type === 'IN') { changes.docNo = e.docNo; changes.docDate = e.docDate; } else changes.person = e.person;
   saving = true; busy(true, 'Sending…');
   try {
@@ -821,16 +889,16 @@ async function saveMaterial() {
   if (!m.unit) return toast('Select a unit', true);
   await run('Saving…', async () => {
     const r = await api('addMaterial', TOKEN, m);
-    D.materials = r.materials; D.units = r.units;
+    D.materials = r.materials; D.units = r.units; fillFormUnits();
     $('matDlg').close(); fillMaterialSelects(); $('fMat').value = r.added; onMatChange();
     toast('Material added: ' + r.added);
   });
 }
-function openUnitDlg() { $('uName').value = ''; $('unitDlg').showModal(); $('uName').focus(); }
+function openUnitDlg(fromForm) { unitTarget = fromForm === true ? 'form' : 'mat'; $('uName').value = ''; $('unitDlg').showModal(); $('uName').focus(); }
 async function saveUnit() {
   const u = $('uName').value.trim();
   if (!u) return toast('Enter unit name', true);
-  await run('Saving…', async () => { D.units = await api('addUnit', TOKEN, u); $('unitDlg').close(); fillUnitSelect(u); toast('Unit added: ' + u); });
+  await run('Saving…', async () => { D.units = await api('addUnit', TOKEN, u); $('unitDlg').close(); fillUnitSelect(unitTarget === 'mat' ? u : ''); fillFormUnits(unitTarget === 'form' ? u : ''); showAvail(); calcAmt(); toast('Unit added: ' + u); });
 }
 function openPartyDlg() {
   const isIn = mode === 'IN';
@@ -998,16 +1066,16 @@ async function resetPw(i) {
 }
 function renderProjects() {
   $('projList').innerHTML = D.allProjects.map(p => `<div class="card" style="display:flex;align-items:center;gap:8px">
-    <div style="flex:1"><b>${esc(p.code)}</b> — ${esc(p.name)}<div class="sub">${esc(p.location || '')}</div></div>
+    <div style="flex:1"><b>${esc(p.code)}</b> — ${esc(p.name)}<div class="sub">Entry no. GRN/${esc(p.prefix)}/… · ISS/${esc(p.prefix)}/…${p.location ? ' · ' + esc(p.location) : ''}</div></div>
     <span class="pill ${p.status === 'Active' ? 'ok' : 'no'}">${esc(p.status)}</span>
     <button class="btn sm ghost" onclick="projStatus(${esc(JSON.stringify(p.code))},'${p.status === 'Active' ? 'Closed' : 'Active'}')">${p.status === 'Active' ? 'Close' : 'Reopen'}</button>
   </div>`).join('') || '<div class="empty">No projects yet</div>';
 }
 async function addProject() {
-  const d = { code: $('pjCode').value.trim(), name: $('pjName').value.trim(), location: $('pjLoc').value.trim() };
+  const d = { code: $('pjCode').value.trim(), name: $('pjName').value.trim(), location: $('pjLoc').value.trim(), prefix: $('pjPrefix').value.trim() };
   await run('Saving…', async () => {
     D = await api('addProject', TOKEN, d);
-    ['pjCode', 'pjName', 'pjLoc'].forEach(id => $(id).value = '');
+    ['pjCode', 'pjName', 'pjLoc', 'pjPrefix'].forEach(id => $(id).value = '');
     renderShell(); await loadStock(); renderUsers(); toast('Project added: ' + d.code.toUpperCase());
   });
 }
